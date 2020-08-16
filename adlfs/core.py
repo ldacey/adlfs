@@ -11,7 +11,8 @@ from azure.storage.blob._shared.base_client import create_configuration
 from azure.datalake.store import AzureDLFileSystem, lib
 from azure.datalake.store.core import AzureDLFile, AzureDLPath
 from azure.storage.blob import BlobServiceClient
-from azure.storage.blob._models import BlobBlock, BlobPrefix
+from azure.storage.blob._models import BlobBlock
+from azure.storage.blob._list_blobs_helper import BlobPrefix
 from fsspec import AbstractFileSystem
 from fsspec.spec import AbstractBufferedFile
 from fsspec.utils import infer_storage_options, tokenize
