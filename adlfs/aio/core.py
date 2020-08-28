@@ -1071,7 +1071,7 @@ class AzureBlobFileSystem(AsyncFileSystem):
                 container_client = self.service_client.get_container_client(
                     container=container_name
                 )
-                if (container_name + delimiter in await self.ls("")) and (not path):
+                if (container_name + delimiter in await self._ls("")) and (not path):
                     logging.debug(f"Delete container {container_name}")
                     await container_client.delete_container()
             else:
