@@ -15,7 +15,7 @@ from azure.datalake.store.core import AzureDLFile, AzureDLPath
 from azure.storage.blob.aio import BlobServiceClient as AIOBlobServiceClient
 from azure.storage.blob import BlobServiceClient
 from azure.storage.blob.aio._list_blobs_helper import BlobPrefix
-from azure.storage.blob._models import BlobBlock, BlobProperties
+from azure.storage.blob._models import BlobBlock, BlobProperties, BlobType
 from fsspec import AbstractFileSystem
 from fsspec.asyn import (
     sync,
@@ -747,7 +747,7 @@ class AzureBlobFileSystem(AsyncFileSystem):
         List of dicts
             Returns details about the contents, such as name, size and type
         """
-
+        # import pdb;pdb.set_trace()
         output = []
         for content in contents:
             data = {}
@@ -880,10 +880,20 @@ class AzureBlobFileSystem(AsyncFileSystem):
             ):
                 yield path, dirs, files
 
-    def mkdir(self, path, delimiter="/", exists_ok=False, **kwargs):
-        sync(self.loop, self._mkdir, path, delimiter, exists_ok)
+    def makedirs(self, path, exist_ok=False):
+        # import pdb;pdb.set_trace()
+        try:
+            self.mkdir(path, create_parents=True, exist_ok=exist_ok)
+        except FileExistsError:
+                if exist_ok:
+                    pass
+                else:
+                    raise
 
-    async def _mkdir(self, path, delimiter="/", exists_ok=False, **kwargs):
+    def mkdir(self, path, delimiter="/", exist_ok=False, **kwargs):
+        sync(self.loop, self._mkdir, path, delimiter, exist_ok)
+
+    async def _mkdir(self, path, delimiter="/", exist_ok=False, **kwargs):
         """
         Create directory entry at path
 
@@ -895,19 +905,23 @@ class AzureBlobFileSystem(AsyncFileSystem):
         delimiter: str
             Delimiter to use when splitting the path
 
-        exists_ok: bool
+        exist_ok: bool
             If True, raise an exception if the directory already exists. Defaults to False
         """
+        # import pdb;pdb.set_trace()
         container_name, path = self.split_path(path, delimiter=delimiter)
         _containers = await self._ls("")
         _containers = [c["name"] for c in _containers]
+    
         # The list of containers will be returned from _ls() in a directory format,
         # with a trailing "/", but the container_name will not have this.
         # Need a placeholder that presents the container_name in a directory format
         container_name_as_dir = f"{container_name}/"
+
         if _containers is None:
             _containers = []
-        if not exists_ok:
+
+        if not exist_ok:
             if (container_name_as_dir not in _containers) and (not path):
                 # create new container
                 await self.service_client.create_container(name=container_name)
@@ -915,21 +929,22 @@ class AzureBlobFileSystem(AsyncFileSystem):
                 container_name
                 in [container_path.split("/")[0] for container_path in _containers]
             ) and path:
-                ## attempt to create prefix
-                container_client = self.service_client.get_container_client(
+                # Attempt to create the blob prefix
+                blob_client = self.service_client.get_container_client(
                     container=container_name
-                )
-                await container_client.upload_blob(name=path, data="")
+                ).get_blob_client(blob=path)
+                await blob_client.create_append_blob()
             else:
                 ## everything else
                 raise RuntimeError(f"Cannot create {container_name}{delimiter}{path}.")
         else:
+            # import pdb;pdb.set_trace()
             try:
                 if (container_name_as_dir in _containers) and path:
-                    container_client = self.service_client.get_container_client(
+                    blob_client = self.service_client.get_container_client(
                         container=container_name
-                    )
-                    await container_client.upload_blob(name=path, data="")
+                    ).get_blob_client(blob=path)
+                    await blob_client.create_append_blob()
             except ResourceExistsError:
                 pass
         _ = await self._ls("", invalidate_cache=True)
@@ -1413,7 +1428,7 @@ class AzureBlobFile(io.IOBase):
             try:
                 self.container_client.delete_blob(self.blob)
             except ResourceNotFoundError:
-                pass
+                self.blob_client.create_append_blob()
             else:
                 return self.__initiate_upload()
         else:
@@ -1432,25 +1447,17 @@ class AzureBlobFile(io.IOBase):
             self.autocommit is True.
 
         """
+        # import pdb;pdb.set_trace()
         data = self.buffer.getvalue()
         length = len(data)
         block_id = len(self._block_list)
         block_id = f"{block_id:07d}"
         try:
-            self.blob_client.stage_block(block_id=block_id, data=data, length=length)
-            self._block_list.append(block_id)
+            self.blob_client.upload_blob(data=data, length=length, 
+                                        blob_type=BlobType.AppendBlob)
 
-            if final:
-                block_list = [BlobBlock(_id) for _id in self._block_list]
-                self.blob_client.commit_block_list(block_list=block_list)
         except Exception as e:
-            # This step handles the situation where data="" and length=0
-            # which is throws an InvalidHeader error from Azure, so instead
-            # of staging a block, we directly upload the empty blob
-            if block_id == "0000000" and length == 0 and final:
-                self.blob_client.upload_blob(data=data)
-            else:
-                raise RuntimeError(f"Failed to upload block with {e}!!")
+            RuntimeError(f"Failed to upload block with {e}!!")
 
     def flush(self, force=False):
         """
@@ -1487,6 +1494,7 @@ class AzureBlobFile(io.IOBase):
             self.offset += self.buffer.seek(0, 2)
             self.buffer = io.BytesIO()
 
+
     def write(self, data):
         """
         Write data to buffer.
@@ -1509,6 +1517,7 @@ class AzureBlobFile(io.IOBase):
         if self.buffer.tell() >= self.blocksize:
             self.flush()
         return out
+
 
     def readuntil(self, char=b"\n", blocks=None):
         """Return data between current position and first occurrence of char

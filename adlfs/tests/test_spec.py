@@ -325,7 +325,8 @@ def test_mkdir_rmdir(storage):
     assert "new-container/" in fs.ls("")
 
     fs.mkdir("new-container/file2.txt", exists_ok=True)
-    assert "new-container/file2.txt" in fs.ls("new-container")
+    files = fs.ls("new-container")
+    assert "new-container/file2.txt" in files
 
     # Test to verify that the file contains expected contents
     with fs.open("new-container/file2.txt", "rb") as f:
