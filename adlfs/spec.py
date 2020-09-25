@@ -18,9 +18,9 @@ from azure.storage.blob.aio._list_blobs_helper import BlobPrefix
 from azure.storage.blob._models import BlobBlock, BlobProperties
 from fsspec import AbstractFileSystem
 from fsspec.asyn import (
-    sync,
     AsyncFileSystem,
     get_loop,
+    maybe_sync,
 )
 from fsspec.utils import infer_storage_options, tokenize, other_paths
 
@@ -485,13 +485,9 @@ class AzureBlobFileSystem(AsyncFileSystem):
             return path.split(delimiter, 1)
 
     def info(self, path, refresh=False, **kwargs):
-        # print(path)
-        # print(self._ls_from_cache(""))
-        # print(refresh)
         fetch_from_azure = (path and self._ls_from_cache(path) is None) or refresh
-        # print(fetch_from_azure)
         if fetch_from_azure:
-            return sync(self.loop, self._info, path)
+            return maybe_sync(self._info, self, path)
         return super().info(path)
 
     async def _info(self, path, **kwargs):
@@ -525,7 +521,7 @@ class AzureBlobFileSystem(AsyncFileSystem):
             raise FileNotFoundError
 
     def glob(self, path, **kwargs):
-        return sync(self.loop, self._glob, path)
+        return maybe_sync(self._glob, self, path)
 
     async def _glob(self, path, **kwargs):
         """
@@ -612,9 +608,9 @@ class AzureBlobFileSystem(AsyncFileSystem):
         **kwargs,
     ):
 
-        files = sync(
-            self.loop,
+        files = maybe_sync(
             self._ls,
+            self,
             path=path,
             invalidate_cache=invalidate_cache,
             delimiter=delimiter,
@@ -773,7 +769,7 @@ class AzureBlobFileSystem(AsyncFileSystem):
         return output
 
     def find(self, path, maxdepth=None, withdirs=False, **kwargs):
-        return sync(self.loop, self._find, path, maxdepth, withdirs)
+        return maybe_sync(self._find, self, path, maxdepth, withdirs)
 
     async def _find(self, path, maxdepth=None, withdirs=False, **kwargs):
         """List all files below path.
@@ -881,7 +877,7 @@ class AzureBlobFileSystem(AsyncFileSystem):
                 yield path, dirs, files
 
     def mkdir(self, path, delimiter="/", exists_ok=False, **kwargs):
-        sync(self.loop, self._mkdir, path, delimiter, exists_ok)
+        maybe_sync(self._mkdir, self, path, delimiter, exists_ok)
 
     async def _mkdir(self, path, delimiter="/", exists_ok=False, **kwargs):
         """
@@ -935,7 +931,7 @@ class AzureBlobFileSystem(AsyncFileSystem):
         _ = await self._ls("", invalidate_cache=True)
 
     def rm(self, path, recursive=False, maxdepth=None, **kwargs):
-        sync(self.loop, self._rm, path, recursive, **kwargs)
+        maybe_sync(self._rm, self, path, recursive, **kwargs)
 
     async def _rm(self, path, recursive=False, maxdepth=None, **kwargs):
         """Delete files.
@@ -995,7 +991,7 @@ class AzureBlobFileSystem(AsyncFileSystem):
             pass
 
     def rmdir(self, path: str, delimiter="/", **kwargs):
-        sync(self.loop, self._rmdir, path, delimiter=delimiter, **kwargs)
+        maybe_sync(self._rmdir, self, path, delimiter=delimiter, **kwargs)
 
     async def _rmdir(self, path: str, delimiter="/", **kwargs):
         """
@@ -1020,7 +1016,7 @@ class AzureBlobFileSystem(AsyncFileSystem):
             _ = await self._ls("", invalidate_cache=True)
 
     def size(self, path):
-        return sync(self.loop, self._size, path)
+        return maybe_sync(self._size, self, path)
 
     async def _size(self, path):
         """Size in bytes of file"""
@@ -1029,7 +1025,7 @@ class AzureBlobFileSystem(AsyncFileSystem):
         return size
 
     def isfile(self, path):
-        return sync(self.loop, self._isfile, path)
+        return maybe_sync(self._isfile, self, path)
 
     async def _isfile(self, path):
         """Is this entry file-like?"""
@@ -1049,7 +1045,7 @@ class AzureBlobFileSystem(AsyncFileSystem):
             return False
 
     def isdir(self, path):
-        return sync(self.loop, self._isdir, path)
+        return maybe_sync(self._isdir, self, path)
 
     async def _isdir(self, path):
         """Is this entry directory-like?"""
@@ -1067,7 +1063,7 @@ class AzureBlobFileSystem(AsyncFileSystem):
             return False
 
     def exists(self, path):
-        return sync(self.loop, self._exists, path)
+        return maybe_sync(self._exists, self, path)
 
     async def _exists(self, path):
         """Is there a file at the given path"""
@@ -1115,7 +1111,7 @@ class AzureBlobFileSystem(AsyncFileSystem):
             return self.cat_file(paths[0])
 
     def expand_path(self, path, recursive=False, maxdepth=None):
-        return sync(self.loop, self._expand_path, path, recursive, maxdepth)
+        return maybe_sync(self._expand_path, self, path, recursive, maxdepth)
 
     async def _expand_path(self, path, recursive=False, maxdepth=None):
         """Turn one or more globs or directories into a list of all matching files"""
